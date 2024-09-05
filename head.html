@@ -2,3 +2,81 @@
 <script src="/scripts/aem.js" type="module"></script>
 <script src="/scripts/scripts.js" type="module"></script>
 <link rel="stylesheet" href="/styles/styles.css"/>
+<script src="https://applepay.cdn-apple.com/jsapi/v1.1.0/apple-pay-sdk.js"></script>
+<script>
+  document.getElementById('payButton').addEventListener('click', function() {
+
+    console.log("click");
+
+    // Check if the browser supports Apple Pay
+    if (window.ApplePaySession && ApplePaySession.canMakePayments()) {
+      const paymentRequest = {
+        countryCode: 'US',
+        currencyCode: 'USD',
+        total: {
+          label: 'Example Company',
+          amount: '10.00'
+        },
+        supportedNetworks: ['visa', 'masterCard', 'amex'],
+        merchantCapabilities: ['supports3DS']
+      };
+
+      const session = new ApplePaySession(3, paymentRequest);
+
+      // Set up event handlers
+      session.onvalidatemerchant = function(event) {
+
+        console.log(event.validationURL);
+
+        // Request a merchant session from your server
+        fetch('/validate-merchant', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            validationUrl: event.validationURL
+          })
+        })
+          .then(response => response.json())
+          .then(merchantSession => {
+            session.completeMerchantValidation(merchantSession);
+          })
+          .catch(error => {
+            console.error('Error validating merchant:', error);
+          });
+      };
+
+      session.onpaymentauthorized = function(event) {
+        // Handle the payment authorization
+        // Send payment token to your server
+        fetch('/process-payment', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            token: event.payment.token
+          })
+        })
+          .then(response => response.json())
+          .then(result => {
+            session.completePayment(result.success ? ApplePaySession.STATUS_SUCCESS : ApplePaySession.STATUS_FAILURE);
+          })
+          .catch(error => {
+            console.error('Error processing payment:', error);
+            session.completePayment(ApplePaySession.STATUS_FAILURE);
+          });
+      };
+
+      session.oncancel = function() {
+        console.log('Payment cancelled');
+      };
+
+      session.begin();
+    } else {
+      console.log('Apple Pay is not supported');
+    }
+  });
+</script>
+<button id="payButton">Buy Now</button>
